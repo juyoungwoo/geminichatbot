@@ -30,11 +30,16 @@ def get_embeddings():
 # ✅ Google Drive API 초기화
 @st.cache_resource
 def init_drive_service():
-    credentials = service_account.Credentials.from_service_account_info(
-        st.secrets["google_credentials"],
-        scopes=['https://www.googleapis.com/auth/drive.readonly']
-    )
-    return build('drive', 'v3', credentials=credentials)
+    try:
+        credentials = service_account.Credentials.from_service_account_info(
+            st.secrets["google_credentials"],
+            scopes=['https://www.googleapis.com/auth/drive.readonly']
+        )
+        service = build('drive', 'v3', credentials=credentials)
+        return service
+    except Exception as e:
+        st.error(f"Drive 서비스 초기화 오류: {str(e)}")
+        return None
 
 # ✅ PDF 파일 목록 가져오기
 def get_pdf_files(service, folder_id):
