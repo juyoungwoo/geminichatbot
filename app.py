@@ -113,15 +113,16 @@ def main():
             st.warning("📂 매뉴얼 폴더에 PDF 파일이 없습니다.")
             return
 
-        # Create two columns for layout
-        col1, col2 = st.columns([2, 3])
+        # 상태 표시를 위한 컨테이너
+        status_container = st.container()
+        chat_container = st.container()
         
-        with col1:
-            status_placeholder = st.empty()
+        # 분석 상태 확인
+        if "analysis_completed" not in st.session_state:
+            st.session_state.analysis_completed = False
             
-            # Check if analysis is already completed
-            if "analysis_completed" not in st.session_state:
-                st.session_state.analysis_completed = False
+            with status_container:
+                status_placeholder = st.empty()
                 
                 # Process PDFs with memory management
                 all_texts = []
@@ -129,7 +130,7 @@ def main():
                 
                 for idx, pdf in enumerate(pdf_files, 1):
                     status_placeholder.info(f"📄 매뉴얼 분석 중... ({idx}/{total_files})\n\n현재 처리 중: {pdf['name']}")
-                    documents = process_pdf(pdf, service)  # process_single_pdf를 process_pdf로 수정
+                    documents = process_pdf(pdf, service)
                     all_texts.extend(documents)
                 
                 # Text splitting
@@ -153,11 +154,13 @@ def main():
                 st.session_state.vector_store = vector_store
                 st.session_state.analysis_completed = True
 
-            # Show completion message
+        # Show completion message
+        with status_container:
             if st.session_state.analysis_completed:
-                status_placeholder.success("✅ 매뉴얼 분석이 완료되었습니다. 질문해 주세요!")
+                st.success("✅ 매뉴얼 분석이 완료되었습니다. 질문해 주세요!")
 
-        with col2:
+        # 채팅 인터페이스
+        with chat_container:
             if st.session_state.analysis_completed:
                 # Chat interface setup
                 retriever = st.session_state.vector_store.as_retriever(search_kwargs={"k": 3})
@@ -239,6 +242,6 @@ def main():
 
     except Exception as e:
         st.error(f"🚨 시스템 오류 발생: {str(e)}")
-
+        
 if __name__ == "__main__":
     main()
