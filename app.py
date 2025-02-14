@@ -3,7 +3,7 @@ import os
 import tempfile
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_community.document_loaders import PyPDFLoader
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain.text_splitter import CharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain.chains import ConversationalRetrievalChain
@@ -22,8 +22,9 @@ os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
 # ✅ 임베딩 모델 캐싱 (메모리 절약)
 @st.cache_resource
 def get_embeddings():
-    return HuggingFaceEmbeddings(
-        model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    return GoogleGenerativeAIEmbeddings(
+        model="models/embedding-001",  # Google의 임베딩 모델
+        google_api_key=st.secrets["GOOGLE_API_KEY"]  # 기존에 설정한 API 키 사용
     )
 
 # ✅ Google Drive API 초기화
