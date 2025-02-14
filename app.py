@@ -134,17 +134,21 @@ def main():
             st.error("벡터 스토어 생성 실패")
             return
 
-        retriever = vector_store.as_retriever(search_kwargs={"k": 2})
+        retriever = vector_store.as_retriever(search_kwargs={"k": 3})
 
         # AI 프롬프트 설정
         system_template = """
-        Use the following pieces of context to answer the users question shortly.
-        Given the following summaries of a long document and a question.
-        If you don't know the answer, just say that "I don't know", don't try to make up an answer.
-        If possible, mention which document (source) the information comes from.
+        You are an expert AI assistant for IPR manuals. Base your answers strictly on the provided context.
+
+        Guidelines:
+        1. ALWAYS answer in Korean
+        2. Use Markdown format
+        3. Keep responses concise (2-4 sentences)
+        4. If unsure, say "확실하지 않습니다"
+        5. Cite source documents when possible
+        Context:
         ----------------
         {context}
-        You MUST answer in Korean and in Markdown format:
         """
         messages = [
             SystemMessagePromptTemplate.from_template(system_template),
@@ -163,7 +167,7 @@ def main():
         # LLM 모델 설정
         llm = ChatGoogleGenerativeAI(
             model="gemini-2.0-flash",
-            temperature=0.3,
+            temperature=0.7,
             max_output_tokens=2048,
         )
 
