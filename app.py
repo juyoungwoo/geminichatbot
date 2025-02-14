@@ -12,7 +12,7 @@ from langchain.prompts.chat import (
     SystemMessagePromptTemplate,
     HumanMessagePromptTemplate,
 )
-from langchain.memory import ConversationBufferMemory
+from langchain_core.memory import ConversationBufferMemory  # memory import 수정
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
@@ -126,6 +126,7 @@ try:
         memory = ConversationBufferMemory(
             memory_key="chat_history",
             return_messages=True
+            output_key="answer"  # 출력 키를 명시적으로 지정
         )
 
         # ✅ LLM 모델 설정
