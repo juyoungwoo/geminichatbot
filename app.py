@@ -153,8 +153,6 @@ def main():
     except Exception as e:  # 여기서 try 블록 끝
         st.error(f"🚨 시스템 오류 발생: {str(e)}")
 
-if __name__ == "__main__":
-    main()
-        
+      
 if __name__ == "__main__":
     main()
