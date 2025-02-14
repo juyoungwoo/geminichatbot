@@ -60,7 +60,7 @@ def get_pdf_files(service, folder_id):
         st.error(f"Google Drive API 오류: {str(e)}")
         return []
 
-# PDF 처리 및 벡터 저장소 생성 (캐시 제거)
+# PDF 처리 및 벡터 저장소 생성
 def process_pdf(pdf, service):
     try:
         request = service.files().get_media(fileId=pdf['id'])
@@ -81,6 +81,14 @@ def process_pdf(pdf, service):
     except Exception as e:
         st.warning(f"⚠️ {pdf['name']} 처리 중 오류 발생: {str(e)}")
         return []
+
+# 벡터 저장소 생성 함수 추가
+def create_vector_store(texts, embeddings):
+    try:
+        return FAISS.from_documents(texts, embeddings)
+    except Exception as e:
+        st.error(f"벡터 저장소 생성 중 오류 발생: {str(e)}")
+        return None
 
 def main():
     st.title("📄 IPR실 매뉴얼 AI 챗봇")
@@ -121,7 +129,7 @@ def main():
                 
                 for idx, pdf in enumerate(pdf_files, 1):
                     status_placeholder.info(f"📄 매뉴얼 분석 중... ({idx}/{total_files})\n\n현재 처리 중: {pdf['name']}")
-                    documents = process_single_pdf(pdf, service)
+                    documents = process_pdf(pdf, service)  # process_single_pdf를 process_pdf로 수정
                     all_texts.extend(documents)
                 
                 # Text splitting
