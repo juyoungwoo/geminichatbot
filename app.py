@@ -212,43 +212,30 @@ def main():
                 if "messages" not in st.session_state:
                     st.session_state.messages = []
 
-                # Chat input
+                # Handle new messages
                 if prompt := st.chat_input("📝 질문을 입력하세요"):
-                    # Add user message to chat history
                     st.session_state.messages.append({"role": "user", "content": prompt})
                     
-                    # Display user message
-                    with st.chat_message("user"):
-                        st.write(prompt)
-                    
-                    # Get bot response
                     with st.spinner("🤖 답변을 생성하고 있습니다..."):
                         response = chain({"question": prompt})
                         st.session_state.messages.append({
                             "role": "assistant",
                             "content": response['answer']
                         })
-                    
-                    # Display bot response
-                    with st.chat_message("assistant"):
-                        st.write(response['answer'])
-                        sources = set([doc.metadata['source'] for doc in response['source_documents']])
-                        if sources:
-                            st.caption("참고 문서: " + ", ".join(sources))
 
-                # Display chat history
-                for message in st.session_state.messages[:-2]:  # Skip the last two messages as they're already displayed
-                    with st.chat_message(message["role"]):
-                        st.write(message["content"])
-                        if message["role"] == "assistant":
-                            if "sources" in message:
-                                st.caption("참고 문서: " + ", ".join(message["sources"]))
+                # Display chat history in chronological order
+                for message in st.session_state.messages:
+                    if message["role"] == "user":
+                        st.text_input("질문:", value=message["content"], disabled=True)
+                    else:
+                        st.text_area("답변:", value=message["content"], disabled=True, height=100)
+                        if message == st.session_state.messages[-1]:  # 최신 답변인 경우에만 소스 표시
+                            sources = set([doc.metadata['source'] for doc in response['source_documents']])
+                            if sources:
+                                st.caption("참고 문서: " + ", ".join(sources))
 
     except Exception as e:
         st.error(f"🚨 시스템 오류 발생: {str(e)}")
-
-if __name__ == "__main__":
-    main()
         
 if __name__ == "__main__":
     main()
