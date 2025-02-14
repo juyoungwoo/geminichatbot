@@ -226,13 +226,13 @@ def main():
                 # Display chat history in chronological order
                 for message in st.session_state.messages:
                     if message["role"] == "user":
-                        st.text_input("질문:", value=message["content"], disabled=True)
+                        st.markdown(f"**🙋 사용자:** {message['content']}")
                     else:
-                        st.text_area("답변:", value=message["content"], disabled=True, height=100)
-                        if message == st.session_state.messages[-1]:  # 최신 답변인 경우에만 소스 표시
+                        st.markdown(f"**🤖 챗봇:** {message['content']}")
+                        if message == st.session_state.messages[-1]:  # 최신 답변일 경우에만 소스 표시
                             sources = set([doc.metadata['source'] for doc in response['source_documents']])
                             if sources:
-                                st.caption("참고 문서: " + ", ".join(sources))
+                                st.caption("📌 참고 문서: " + ", ".join(sources))
 
     except Exception as e:
         st.error(f"🚨 시스템 오류 발생: {str(e)}")
