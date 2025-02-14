@@ -162,8 +162,8 @@ def main():
 
         # LLM 모델 설정
         llm = ChatGoogleGenerativeAI(
-            model="gemini-1.5-flash-8b",
-            temperature=0.7,
+            model="gemini-2.0-flash",
+            temperature=0.3,
             max_output_tokens=2048,
         )
 
