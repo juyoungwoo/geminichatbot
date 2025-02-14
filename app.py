@@ -140,10 +140,10 @@ try:
        prompt = ChatPromptTemplate.from_messages(messages)
 
        chain = ConversationalRetrievalChain.from_llm(
-          llm=llm,
-          retriever=retriever,
-          return_source_documents=True,
-          combine_docs_chain_kwargs={"prompt": prompt}
+           llm=llm,
+           retriever=retriever,
+           return_source_documents=True,
+           combine_docs_chain_kwargs={"prompt": prompt}
        )
       
        # 대화 기록 저장
