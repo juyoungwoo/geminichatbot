@@ -113,9 +113,10 @@ def main():
             st.warning("📂 매뉴얼 폴더에 PDF 파일이 없습니다.")
             return
 
-        # 상태 표시를 위한 컨테이너
+        # 컨테이너 구조 재정의
         status_container = st.container()
-        chat_container = st.container()
+        chat_input_container = st.container()  # 새로 추가: 입력창을 위한 컨테이너
+        chat_history_container = st.container()  # 새로 추가: 대화 히스토리를 위한 컨테이너
         
         # 분석 상태 확인
         if "analysis_completed" not in st.session_state:
@@ -160,85 +161,83 @@ def main():
                 st.success("✅ 매뉴얼 분석이 완료되었습니다. 질문해 주세요!")
 
         # 채팅 인터페이스
-        with chat_container:
-            if st.session_state.analysis_completed:
-                # Chat interface setup
-                retriever = st.session_state.vector_store.as_retriever(search_kwargs={"k": 3})
-                
-                system_template = """
-                You are an expert AI assistant for IPR manuals. Base your answers strictly on the provided context.
+        if st.session_state.analysis_completed:
+            # Chat interface setup
+            retriever = st.session_state.vector_store.as_retriever(search_kwargs={"k": 3})
+            
+            system_template = """
+            You are an expert AI assistant for IPR manuals. Base your answers strictly on the provided context.
 
-                Guidelines:
-                1. ALWAYS answer in Korean
-                2. Use Markdown format
-                3. Keep responses concise (2-4 sentences)
-                4. If unsure, say "확실하지 않습니다"
-                5. Cite source documents when possible
-                Context:
-                ----------------
-                {context}
-                """
-                
-                messages = [
-                    SystemMessagePromptTemplate.from_template(system_template),
-                    HumanMessagePromptTemplate.from_template("{question}")
-                ]
-                prompt = ChatPromptTemplate.from_messages(messages)
+            Guidelines:
+            1. ALWAYS answer in Korean
+            2. Use Markdown format
+            3. Keep responses concise (2-4 sentences)
+            4. If unsure, say "확실하지 않습니다"
+            5. Cite source documents when possible
+            Context:
+            ----------------
+            {context}
+            """
+            
+            messages = [
+                SystemMessagePromptTemplate.from_template(system_template),
+                HumanMessagePromptTemplate.from_template("{question}")
+            ]
+            prompt = ChatPromptTemplate.from_messages(messages)
 
-                # Initialize memory if not exists
-                if "memory" not in st.session_state:
-                    st.session_state.memory = ConversationBufferMemory(
-                        memory_key="chat_history",
-                        return_messages=True,
-                        output_key="answer"
-                    )
-
-                # Initialize LLM and chain
-                llm = ChatGoogleGenerativeAI(
-                    model="gemini-2.0-flash",
-                    temperature=0.7,
-                    max_output_tokens=2048,
+            # Initialize memory if not exists
+            if "memory" not in st.session_state:
+                st.session_state.memory = ConversationBufferMemory(
+                    memory_key="chat_history",
+                    return_messages=True,
+                    output_key="answer"
                 )
 
-                chain = ConversationalRetrievalChain.from_llm(
-                    llm=llm,
-                    retriever=retriever,
-                    memory=st.session_state.memory,
-                    combine_docs_chain_kwargs={'prompt': prompt},
-                    return_source_documents=True
-                )
+            # Initialize LLM and chain
+            llm = ChatGoogleGenerativeAI(
+                model="gemini-2.0-flash",
+                temperature=0.7,
+                max_output_tokens=2048,
+            )
 
-                # Initialize chat history
-                if "messages" not in st.session_state:
-                    st.session_state.messages = []
+            chain = ConversationalRetrievalChain.from_llm(
+                llm=llm,
+                retriever=retriever,
+                memory=st.session_state.memory,
+                combine_docs_chain_kwargs={'prompt': prompt},
+                return_source_documents=True
+            )
 
-                # Display chat history
+            # Initialize chat history
+            if "messages" not in st.session_state:
+                st.session_state.messages = []
+
+            # 입력창을 먼저 아래에 배치
+            with chat_input_container:
+                if prompt := st.chat_input("📝 질문을 입력하세요"):
+                    st.session_state.messages.append({"role": "user", "content": prompt})
+                    
+                    # 새로운 대화 처리
+                    with st.spinner("🤖 답변을 생성하고 있습니다..."):
+                        response = chain({"question": prompt})
+                        st.session_state.messages.append({
+                            "role": "assistant",
+                            "content": response['answer']
+                        })
+
+            # 대화 히스토리는 위에 표시
+            with chat_history_container:
                 for message in st.session_state.messages:
                     with st.chat_message(message["role"]):
                         st.markdown(message["content"])
-
-                # Handle new messages
-                if prompt := st.chat_input("📝 질문을 입력하세요"):
-                    st.session_state.messages.append({"role": "user", "content": prompt})
-                    with st.chat_message("user"):
-                        st.markdown(prompt)
-
-                    with st.chat_message("assistant"):
-                        with st.spinner("🤖 답변을 생성하고 있습니다..."):
-                            response = chain({"question": prompt})
-                            st.markdown(response['answer'])
-                            
+                        if message["role"] == "assistant" and message == st.session_state.messages[-1]:
+                            # 소스 문서 표시 (마지막 메시지인 경우에만)
                             sources = set([doc.metadata['source'] for doc in response['source_documents']])
                             if sources:
                                 st.markdown("---")
                                 st.markdown("**참고한 문서:**")
                                 for source in sources:
                                     st.markdown(f"- {source}")
-                            
-                            st.session_state.messages.append({
-                                "role": "assistant",
-                                "content": response['answer']
-                            })
 
     except Exception as e:
         st.error(f"🚨 시스템 오류 발생: {str(e)}")
