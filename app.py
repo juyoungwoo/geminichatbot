@@ -94,64 +94,13 @@ def main():
     st.title("📄 IPR실 매뉴얼 AI 챗봇")
 
     try:
-        # Initialize services
-        service = init_drive_service()
-        embeddings = get_embeddings()
-        
-        if not service or not embeddings:
-            st.error("필수 서비스 초기화 실패")
-            return
-
-        folder_id = st.secrets.get("FOLDER_ID")
-        if not folder_id:
-            st.error("폴더 ID가 설정되지 않았습니다.")
-            return
-
-        pdf_files = get_pdf_files(service, folder_id)
-        if not pdf_files:
-            st.warning("📂 매뉴얼 폴더에 PDF 파일이 없습니다.")
-            return
-
         # 컨테이너 구조 정의
         status_container = st.container()
         chat_container = st.container()
-        
+
         # 분석 상태 확인
         if "analysis_completed" not in st.session_state:
             st.session_state.analysis_completed = False
-            
-            with status_container:
-                status_placeholder = st.empty()
-                
-                # Process PDFs with memory management
-                all_texts = []
-                total_files = len(pdf_files)
-                
-                for idx, pdf in enumerate(pdf_files, 1):
-                    status_placeholder.info(f"📄 매뉴얼 분석 중... ({idx}/{total_files})\n\n현재 처리 중: {pdf['name']}")
-                    documents = process_pdf(pdf, service)
-                    all_texts.extend(documents)
-                
-                # Text splitting
-                status_placeholder.info("📄 텍스트 분할 작업 진행 중...")
-                text_splitter = RecursiveCharacterTextSplitter(
-                    chunk_size=1000,
-                    chunk_overlap=100,
-                    length_function=len,
-                    separators=["\n\n", "\n", " ", ""]
-                )
-                split_texts = text_splitter.split_documents(all_texts)
-                
-                # Create vector store
-                status_placeholder.info("📄 벡터 저장소 생성 중...")
-                vector_store = create_vector_store(split_texts, embeddings)
-                
-                if not vector_store:
-                    st.error("벡터 저장소 생성 실패")
-                    return
-                
-                st.session_state.vector_store = vector_store
-                st.session_state.analysis_completed = True
 
         # Show completion message
         with status_container:
@@ -161,9 +110,8 @@ def main():
         # 채팅 인터페이스
         with chat_container:
             if st.session_state.analysis_completed:
-                # Chat interface setup
                 retriever = st.session_state.vector_store.as_retriever(search_kwargs={"k": 3})
-                
+
                 system_template = """
                 You are an expert AI assistant for IPR manuals. Base your answers strictly on the provided context.
 
@@ -177,14 +125,13 @@ def main():
                 ----------------
                 {context}
                 """
-                
+
                 messages = [
                     SystemMessagePromptTemplate.from_template(system_template),
                     HumanMessagePromptTemplate.from_template("{question}")
                 ]
                 prompt = ChatPromptTemplate.from_messages(messages)
 
-                # Initialize memory if not exists
                 if "memory" not in st.session_state:
                     st.session_state.memory = ConversationBufferMemory(
                         memory_key="chat_history",
@@ -192,7 +139,6 @@ def main():
                         output_key="answer"
                     )
 
-                # Initialize LLM and chain
                 llm = ChatGoogleGenerativeAI(
                     model="gemini-2.0-flash",
                     temperature=0.7,
@@ -207,45 +153,46 @@ def main():
                     return_source_documents=True
                 )
 
-                # Initialize chat history
                 if "messages" not in st.session_state:
                     st.session_state.messages = []
 
-                # Chat input
-                if prompt := st.chat_input("📝 질문을 입력하세요"):
-                    # Add user message to chat history
+                # 채팅 기록을 최신순으로 출력 (최신 메시지가 아래쪽으로)
+                for message in st.session_state.messages:
+                    with st.chat_message(message["role"]):
+                        st.write(message["content"])
+                        if message["role"] == "assistant" and "sources" in message:
+                            st.caption("참고 문서: " + ", ".join(message["sources"]))
+
+                # 질문 입력창 (항상 하단에 위치)
+                prompt = st.chat_input("📝 질문을 입력하세요")
+                if prompt:
                     st.session_state.messages.append({"role": "user", "content": prompt})
-                    
-                    # Display user message
+
+                    # 사용자 메시지 출력
                     with st.chat_message("user"):
                         st.write(prompt)
-                    
-                    # Get bot response
+
+                    # AI 응답 생성
                     with st.spinner("🤖 답변을 생성하고 있습니다..."):
                         response = chain({"question": prompt})
+                        answer = response['answer']
+                        sources = set([doc.metadata['source'] for doc in response['source_documents']])
+
+                        # 메시지 저장
                         st.session_state.messages.append({
                             "role": "assistant",
-                            "content": response['answer']
+                            "content": answer,
+                            "sources": list(sources) if sources else []
                         })
-                    
-                    # Display bot response
+
+                    # AI 응답 출력
                     with st.chat_message("assistant"):
-                        st.write(response['answer'])
-                        sources = set([doc.metadata['source'] for doc in response['source_documents']])
+                        st.write(answer)
                         if sources:
                             st.caption("참고 문서: " + ", ".join(sources))
 
-                # Display chat history
-                for message in st.session_state.messages[:-2]:  # Skip the last two messages as they're already displayed
-                    with st.chat_message(message["role"]):
-                        st.write(message["content"])
-                        if message["role"] == "assistant":
-                            if "sources" in message:
-                                st.caption("참고 문서: " + ", ".join(message["sources"]))
-
     except Exception as e:
         st.error(f"🚨 시스템 오류 발생: {str(e)}")
-
 
 if __name__ == "__main__":
     main()
