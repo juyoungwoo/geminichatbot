@@ -167,7 +167,7 @@ def main():
                 
                 system_template = """
                 You are an expert AI assistant for IPR manuals. Base your answers strictly on the provided context.
-
+        
                 Guidelines:
                 1. ALWAYS answer in Korean
                 2. Use Markdown format
@@ -184,7 +184,7 @@ def main():
                     HumanMessagePromptTemplate.from_template("{question}")
                 ]
                 prompt = ChatPromptTemplate.from_messages(messages)
-
+        
                 # Initialize memory if not exists
                 if "memory" not in st.session_state:
                     st.session_state.memory = ConversationBufferMemory(
@@ -192,14 +192,14 @@ def main():
                         return_messages=True,
                         output_key="answer"
                     )
-
+        
                 # Initialize LLM and chain
                 llm = ChatGoogleGenerativeAI(
                     model="gemini-2.0-flash",
                     temperature=0.7,
                     max_output_tokens=2048,
                 )
-
+        
                 chain = ConversationalRetrievalChain.from_llm(
                     llm=llm,
                     retriever=retriever,
@@ -207,22 +207,25 @@ def main():
                     combine_docs_chain_kwargs={'prompt': prompt},
                     return_source_documents=True
                 )
-
+        
                 # Initialize chat history
                 if "messages" not in st.session_state:
                     st.session_state.messages = []
-
+        
                 # Display chat history
                 for message in st.session_state.messages:
                     with st.chat_message(message["role"]):
                         st.markdown(message["content"])
-
-                # Handle new messages
+        
+                # 질문 입력창을 대화 기록 아래에 배치
                 if prompt := st.chat_input("📝 질문을 입력하세요"):
                     st.session_state.messages.append({"role": "user", "content": prompt})
+                    
+                    # 대화 기록에 사용자 메시지 추가
                     with st.chat_message("user"):
                         st.markdown(prompt)
-
+        
+                    # 답변 생성 및 표시
                     with st.chat_message("assistant"):
                         with st.spinner("🤖 답변을 생성하고 있습니다..."):
                             response = chain({"question": prompt})
@@ -239,9 +242,8 @@ def main():
                                 "role": "assistant",
                                 "content": response['answer']
                             })
-
-    except Exception as e:
-        st.error(f"🚨 시스템 오류 발생: {str(e)}")
+            except Exception as e:
+                st.error(f"🚨 시스템 오류 발생: {str(e)}")
         
 if __name__ == "__main__":
     main()
