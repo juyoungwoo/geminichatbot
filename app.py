@@ -74,35 +74,40 @@ def process_all_pdfs():
     progress_text = st.empty()
     progress_bar = st.progress(0)
     
-    for idx, pdf in enumerate(pdf_files):
-        try:
-            progress_text.text(f"처리 중: {pdf['name']}")
-            progress_bar.progress((idx + 1) / len(pdf_files))
-            
-            request = service.files().get_media(fileId=pdf['id'])
-            file_content = request.execute()
-            
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
-                temp_file.write(file_content)
-                pdf_path = temp_file.name
-            
-            loader = PyPDFLoader(pdf_path)
-            documents = loader.load()
-            
-            for doc in documents:
-                doc.metadata['source'] = pdf['name']
-            
-            all_texts.extend(documents)
-            os.unlink(pdf_path)
-            
-        except Exception as e:
-            st.warning(f"⚠️ {pdf['name']} 처리 중 오류 발생: {str(e)}")
-    
-    progress_text.empty()
-    progress_bar.empty()
-    
-    split_texts = text_splitter.split_documents(all_texts)
-    return create_vector_store(split_texts)
+    try:
+        for idx, pdf in enumerate(pdf_files):
+            try:
+                progress_text.text(f"처리 중: {pdf['name']}")
+                progress_bar.progress((idx + 1) / len(pdf_files))
+                
+                request = service.files().get_media(fileId=pdf['id'])
+                file_content = request.execute()
+                
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
+                    temp_file.write(file_content)
+                    pdf_path = temp_file.name
+                
+                loader = PyPDFLoader(pdf_path)
+                documents = loader.load()
+                
+                for doc in documents:
+                    doc.metadata['source'] = pdf['name']
+                
+                all_texts.extend(documents)
+                os.unlink(pdf_path)
+                
+            except Exception as e:
+                st.warning(f"⚠️ {pdf['name']} 처리 중 오류 발생: {str(e)}")
+        
+        progress_text.empty()
+        progress_bar.empty()
+        
+        split_texts = text_splitter.split_documents(all_texts)
+        return create_vector_store(split_texts)
+        
+    except Exception as e:
+        st.error(f"PDF 처리 중 오류 발생: {str(e)}")
+        return None
 
             # ✅ 문서 분할 최적화
             text_splitter = RecursiveCharacterTextSplitter(
