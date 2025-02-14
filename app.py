@@ -33,7 +33,7 @@ os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
 # 임베딩 모델 캐싱
 @st.cache_resource
 def get_embeddings():
-   return GoogleGenerativeAIEmbeddings(model="text-embedding-004")
+   return GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
 
 # Google Drive 설정
 @st.cache_resource
