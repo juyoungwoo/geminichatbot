@@ -55,16 +55,19 @@ def get_pdf_files(service, folder_id):
 
 # PDF 처리 및 벡터 저장소 생성
 @st.cache_resource(show_spinner=False)
-def process_all_pdfs(pdf_files, _service):
+@st.cache_resource(show_spinner=False)
+def process_all_pdfs(pdf_files, _service, status_placeholder):
     all_texts = []
-    progress_text = st.empty()
-    progress_bar = st.progress(0)
+    total_steps = len(pdf_files) + 2  # PDF 처리 + 텍스트 분할 + 벡터 저장소 생성
+    current_step = 0
     
     try:
+        # PDF 파일 처리
         for idx, pdf in enumerate(pdf_files):
             try:
-                progress_text.text(f"처리 중: {pdf['name']}")
-                progress_bar.progress((idx + 1) / len(pdf_files))
+                current_step = idx
+                progress = (current_step / total_steps) * 100
+                status_placeholder.info(f"📄 매뉴얼 분석 중... ({progress:.1f}%)\n\n현재 처리 중: {pdf['name']}")
                 
                 request = _service.files().get_media(fileId=pdf['id'])
                 file_content = request.execute()
@@ -85,20 +88,25 @@ def process_all_pdfs(pdf_files, _service):
             except Exception as e:
                 st.warning(f"⚠️ {pdf['name']} 처리 중 오류 발생: {str(e)}")
         
-        progress_text.empty()
-        progress_bar.empty()
+        # 텍스트 분할 단계
+        current_step = len(pdf_files)
+        progress = (current_step / total_steps) * 100
+        status_placeholder.info(f"📄 매뉴얼 분석 중... ({progress:.1f}%)\n\n텍스트 분할 작업 진행 중...")
         
-        # 문서 분할 최적화
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,  
-            chunk_overlap=100,  
+            chunk_size=1000,
+            chunk_overlap=100,
             length_function=len,
             separators=["\n\n", "\n", " ", ""],
             is_separator_regex=False
         )
         split_texts = text_splitter.split_documents(all_texts)
         
-        # 벡터 저장소 생성
+        # 벡터 저장소 생성 단계
+        current_step = len(pdf_files) + 1
+        progress = (current_step / total_steps) * 100
+        status_placeholder.info(f"📄 매뉴얼 분석 중... ({progress:.1f}%)\n\n벡터 저장소 생성 중...")
+        
         embeddings = get_embeddings()
         vector_store = FAISS.from_documents(split_texts, embeddings)
         
@@ -126,13 +134,17 @@ def main():
             st.warning("📂 매뉴얼 폴더에 PDF 파일이 없습니다.")
             return
         
-        st.info(f"📄 총 {len(pdf_files)}개의 매뉴얼을 분석 중...")
+        # 상태 표시를 위한 placeholder 생성
+        status_placeholder = st.empty()
         
-        # 벡터 스토어 생성
-        vector_store = process_all_pdfs(pdf_files, service)
+        # 벡터 스토어 생성 (진행률 표시 포함)
+        vector_store = process_all_pdfs(pdf_files, service, status_placeholder)
         if not vector_store:
             st.error("벡터 스토어 생성 실패")
             return
+        
+        # 분석 완료 메시지로 업데이트
+        status_placeholder.success("✅ 매뉴얼 분석이 완료되었습니다. 질문해 주세요!")
 
         retriever = vector_store.as_retriever(search_kwargs={"k": 3})
 
