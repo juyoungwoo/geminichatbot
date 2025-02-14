@@ -1,10 +1,11 @@
 import streamlit as st
 import os
 import tempfile
-from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_community.document_loaders import PyPDFLoader
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain.text_splitter import CharacterTextSplitter
-from langchain.vectorstores import FAISS
+from langchain_community.vectorstores import FAISS
 from langchain.chains import ConversationalRetrievalChain
 from langchain.prompts.chat import (
     ChatPromptTemplate,
@@ -15,27 +16,17 @@ from langchain.memory import ConversationBufferMemory
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
-st.write("🔍 Checking secrets...")
-
-if "GOOGLE_API_KEY" not in st.secrets:
-    st.error("🚨 `GOOGLE_API_KEY`가 `secrets.toml`에 설정되지 않았습니다.")
-else:
-    st.success("✅ `GOOGLE_API_KEY` 로드 성공!")
-
-if "google_credentials" not in st.secrets:
-    st.error("🚨 `google_credentials`가 `secrets.toml`에 설정되지 않았습니다.")
-else:
-    st.success("✅ `google_credentials` 로드 성공!")
-
-# Google Gemini API 키 설정
+# ✅ Gemini API 키 설정
 os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
 
-# 임베딩 모델 캐싱
+# ✅ 임베딩 모델 캐싱 (메모리 절약)
 @st.cache_resource
 def get_embeddings():
-    return GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
+    return HuggingFaceEmbeddings(
+        model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    )
 
-# Google Drive 설정
+# ✅ Google Drive API 초기화
 @st.cache_resource
 def init_drive_service():
     credentials = service_account.Credentials.from_service_account_info(
@@ -44,35 +35,38 @@ def init_drive_service():
     )
     return build('drive', 'v3', credentials=credentials)
 
-# PDF 파일 목록 가져오기
+# ✅ PDF 파일 목록 가져오기
 def get_pdf_files(service, folder_id):
-    results = service.files().list(
-        q=f"'{folder_id}' in parents and mimeType='application/pdf'",
-        fields="files(id, name)"
-    ).execute()
-    return results.get('files', [])
+    try:
+        results = service.files().list(
+            q=f"'{folder_id}' in parents and mimeType='application/pdf'",
+            fields="files(id, name)"
+        ).execute()
+        return results.get('files', [])
+    except Exception as e:
+        st.error(f"Google Drive API 오류: {str(e)}")
+        return []
 
-# Streamlit UI 구성
+# ✅ Streamlit UI 시작
 st.title("📄 IPR실 매뉴얼 AI 챗봇")
 st.write("☆ 자료 수정 또는 추가 희망시 주영 연구원 연락 ☆")
 
 try:
-    # 드라이브 서비스 초기화
+    # ✅ Google Drive에서 PDF 목록 가져오기
     service = init_drive_service()
     FOLDER_ID = '1fThzSsDTeZA6Zs1VLGNPp6PejJJVydra'
-
-    # PDF 파일 목록 가져오기
     pdf_files = get_pdf_files(service, FOLDER_ID)
 
     if not pdf_files:
-        st.warning("폴더에 PDF 파일이 없습니다.")
+        st.warning("📂 매뉴얼 폴더에 PDF 파일이 없습니다.")
     else:
-        st.info(f"총 {len(pdf_files)}개의 매뉴얼을 분석합니다.")
+        st.info(f"📄 총 {len(pdf_files)}개의 매뉴얼을 분석 중...")
 
-        # 모든 PDF 파일의 내용을 하나로 합치기
+        # ✅ 모든 PDF 파일 처리 및 임베딩 벡터 저장
         @st.cache_resource
         def process_all_pdfs():
             all_texts = []
+
             for pdf in pdf_files:
                 try:
                     request = service.files().get_media(fileId=pdf['id'])
@@ -89,27 +83,94 @@ try:
                         doc.metadata['source'] = pdf['name']
 
                     all_texts.extend(documents)
-                    os.unlink(pdf_path)
+
+                    os.unlink(pdf_path)  # 사용 후 파일 삭제
 
                 except Exception as e:
-                    st.warning(f"{pdf['name']} 처리 중 오류 발생: {str(e)}")
+                    st.warning(f"⚠️ {pdf['name']} 처리 중 오류 발생: {str(e)}")
 
-            # 문서 분할 최적화
+            # ✅ 문서 분할 최적화
             text_splitter = CharacterTextSplitter(
-                chunk_size=500,
-                chunk_overlap=200,
-                separator="\n"
+                chunk_size=500,  
+                chunk_overlap=200,  
+                separator="\n"  
             )
             split_texts = text_splitter.split_documents(all_texts)
 
-            # 캐시된 임베딩 모델 사용
+            # ✅ 벡터 저장소 생성 및 캐싱
             embeddings = get_embeddings()
             vector_store = FAISS.from_documents(split_texts, embeddings)
 
             return vector_store
 
-        # 모든 PDF 처리
+        # ✅ 벡터 스토어 생성
         vector_store = process_all_pdfs()
-        retriever =
-::contentReference[oaicite:0]{index=0}
- 
+        retriever = vector_store.as_retriever(search_kwargs={"k": 3})  # 검색 결과 최적화
+
+        # ✅ AI 프롬프트 설정
+        system_template = """
+        다음 문맥을 참고하여 사용자의 질문에 간단명료하게 답변하세요.
+        답을 모르는 경우 "모르겠습니다"라고 답변하고, 답변을 만들어내려 하지 마세요.
+        가능한 경우 정보의 출처(문서)를 언급해주세요.
+        ----------------
+        {context}
+        """
+        messages = [
+            SystemMessagePromptTemplate.from_template(system_template),
+            HumanMessagePromptTemplate.from_template("{question}")
+        ]
+        prompt = ChatPromptTemplate.from_messages(messages)
+
+        # ✅ 메모리 설정
+        memory = ConversationBufferMemory(
+            memory_key="chat_history",
+            return_messages=True
+        )
+
+        # ✅ LLM 모델 설정
+        llm = ChatGoogleGenerativeAI(
+            model="gemini-1.5-flash-8b",  # 수정된 모델명
+            temperature=0.3,
+            max_output_tokens=2048,
+        )
+
+
+        # ✅ 대화 체인 설정
+        chain = ConversationalRetrievalChain.from_llm(
+            llm=llm,
+            retriever=retriever,
+            memory=memory,
+            combine_docs_chain_kwargs={'prompt': prompt},
+            return_source_documents=True
+        )
+
+        # ✅ 채팅 인터페이스
+        if "messages" not in st.session_state:
+            st.session_state.messages = []
+
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+
+        if prompt := st.chat_input("📝 질문을 입력하세요"):
+            st.session_state.messages.append({"role": "user", "content": prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
+
+            with st.chat_message("assistant"):
+                with st.spinner("🤖 답변을 생성하고 있습니다..."):
+                    response = chain({"question": prompt})
+                    st.markdown(response['answer'])
+                    
+                    # 참고한 문서 출처 표시
+                    sources = set([doc.metadata['source'] for doc in response['source_documents']])
+                    if sources:
+                        st.markdown("---")
+                        st.markdown("**참고한 문서:**")
+                        for source in sources:
+                            st.markdown(f"- {source}")
+                            
+                    st.session_state.messages.append({"role": "assistant", "content": response['answer']})
+
+except Exception as e:
+    st.error(f"🚨 시스템 오류 발생: {str(e)}")
