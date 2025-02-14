@@ -4,7 +4,7 @@ import tempfile
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain.text_splitter import CharacterTextSplitter
+from langchain.text_splitter import RecursiveCharacterTextSplitter 
 from langchain_community.vectorstores import FAISS
 from langchain.chains import ConversationalRetrievalChain
 from langchain.prompts.chat import (
@@ -91,10 +91,12 @@ try:
                     st.warning(f"⚠️ {pdf['name']} 처리 중 오류 발생: {str(e)}")
 
             # ✅ 문서 분할 최적화
-            text_splitter = CharacterTextSplitter(
-                chunk_size=500,  
-                chunk_overlap=200,  
-                separator="\n"  
+            text_splitter = ecursiveCharacterTextSplitter(
+                chunk_size=1000,  
+                chunk_overlap=100,  
+                length_function=len,
+                separators=["\n\n", "\n", " ", ""],
+                is_separator_regex=False
             )
             split_texts = text_splitter.split_documents(all_texts)
 
@@ -126,7 +128,8 @@ try:
         memory = ConversationBufferMemory(
             memory_key="chat_history",
             return_messages=True,
-            output_key="answer"  # 출력 키를 명시적으로 지정
+            output_key="answer",  # 출력 키를 명시적으로 지정
+            verbose=False  # 추가
         )
 
         # ✅ LLM 모델 설정
