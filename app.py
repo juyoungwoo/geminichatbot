@@ -27,16 +27,23 @@ def get_embeddings():
         google_api_key=st.secrets["GOOGLE_API_KEY"]
     )
 
-# Google Drive API 초기화
+# Google Drive API 초기화 (개선된 버전)
 @st.cache_resource
 def init_drive_service():
     try:
+        # 서비스 계정 인증 정보 확인
+        if "google_credentials" not in st.secrets:
+            st.error("Google 서비스 계정 인증 정보가 없습니다.")
+            return None
+            
         credentials = service_account.Credentials.from_service_account_info(
             st.secrets["google_credentials"],
             scopes=['https://www.googleapis.com/auth/drive.readonly']
         )
-        service = build('drive', 'v3', credentials=credentials)
+        
+        service = build('drive', 'v3', credentials=credentials, cache_discovery=False)
         return service
+        
     except Exception as e:
         st.error(f"Drive 서비스 초기화 오류: {str(e)}")
         return None
