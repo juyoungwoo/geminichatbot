@@ -1,0 +1,11 @@
+streamlit
+langchain
+langchain-community
+langchain-google-genai
+sentence-transformers
+faiss-cpu
+pypdf
+tiktoken
+google-auth-oauthlib
+google-auth-httplib2
+google-api-python-client
