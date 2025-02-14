@@ -55,8 +55,7 @@ def get_pdf_files(service, folder_id):
 
 # PDF 처리 및 벡터 저장소 생성
 @st.cache_resource(show_spinner=False)
-@st.cache_resource(show_spinner=False)
-def process_all_pdfs(pdf_files, _service, status_placeholder):
+def process_all_pdfs(pdf_files, _service, _status_placeholder):
     all_texts = []
     total_steps = len(pdf_files) + 2  # PDF 처리 + 텍스트 분할 + 벡터 저장소 생성
     current_step = 0
@@ -67,7 +66,7 @@ def process_all_pdfs(pdf_files, _service, status_placeholder):
             try:
                 current_step = idx
                 progress = (current_step / total_steps) * 100
-                status_placeholder.info(f"📄 매뉴얼 분석 중... ({progress:.1f}%)\n\n현재 처리 중: {pdf['name']}")
+                _status_placeholder.info(f"📄 매뉴얼 분석 중... ({progress:.1f}%)\n\n현재 처리 중: {pdf['name']}")
                 
                 request = _service.files().get_media(fileId=pdf['id'])
                 file_content = request.execute()
@@ -91,7 +90,7 @@ def process_all_pdfs(pdf_files, _service, status_placeholder):
         # 텍스트 분할 단계
         current_step = len(pdf_files)
         progress = (current_step / total_steps) * 100
-        status_placeholder.info(f"📄 매뉴얼 분석 중... ({progress:.1f}%)\n\n텍스트 분할 작업 진행 중...")
+        _status_placeholder.info(f"📄 매뉴얼 분석 중... ({progress:.1f}%)\n\n텍스트 분할 작업 진행 중...")
         
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000,
@@ -105,7 +104,7 @@ def process_all_pdfs(pdf_files, _service, status_placeholder):
         # 벡터 저장소 생성 단계
         current_step = len(pdf_files) + 1
         progress = (current_step / total_steps) * 100
-        status_placeholder.info(f"📄 매뉴얼 분석 중... ({progress:.1f}%)\n\n벡터 저장소 생성 중...")
+        _status_placeholder.info(f"📄 매뉴얼 분석 중... ({progress:.1f}%)\n\n벡터 저장소 생성 중...")
         
         embeddings = get_embeddings()
         vector_store = FAISS.from_documents(split_texts, embeddings)
@@ -127,8 +126,8 @@ def main():
             st.error("Google Drive 서비스 연결 실패")
             return
 
-        FOLDER_ID = '1fThzSsDTeZA6Zs1VLGNPp6PejJJVydra'
-        pdf_files = get_pdf_files(service, FOLDER_ID)
+        folder_id = st.secrets["FOLDER_ID"]  # secrets에서 ID 가져오기
+        pdf_files = get_pdf_files(service, folder_id)
 
         if not pdf_files:
             st.warning("📂 매뉴얼 폴더에 PDF 파일이 없습니다.")
