@@ -55,7 +55,7 @@ def get_pdf_files(service, folder_id):
 
 # PDF 처리 및 벡터 저장소 생성
 @st.cache_resource(show_spinner=False)
-def process_all_pdfs(pdf_files, service):
+def process_all_pdfs(pdf_files, _service):
     all_texts = []
     progress_text = st.empty()
     progress_bar = st.progress(0)
@@ -66,7 +66,7 @@ def process_all_pdfs(pdf_files, service):
                 progress_text.text(f"처리 중: {pdf['name']}")
                 progress_bar.progress((idx + 1) / len(pdf_files))
                 
-                request = service.files().get_media(fileId=pdf['id'])
+                request = _service.files().get_media(fileId=pdf['id'])
                 file_content = request.execute()
                 
                 with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
