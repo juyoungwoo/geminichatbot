@@ -242,7 +242,7 @@ def main():
                                 "role": "assistant",
                                 "content": response['answer']
                             })
-            except Exception as e:
+    except Exception as e:
                 st.error(f"🚨 시스템 오류 발생: {str(e)}")
         
 if __name__ == "__main__":
