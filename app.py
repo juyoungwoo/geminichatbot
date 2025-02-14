@@ -82,7 +82,7 @@ def process_pdf(pdf, service):
         st.warning(f"⚠️ {pdf['name']} 처리 중 오류 발생: {str(e)}")
         return []
 
-# 벡터 저장소 생성 함수 추가
+# 벡터 저장소 생성 함수
 def create_vector_store(texts, embeddings):
     try:
         return FAISS.from_documents(texts, embeddings)
@@ -94,7 +94,14 @@ def main():
     st.title("📄 IPR실 매뉴얼 AI 챗봇")
     st.write("☆ 자료 수정 또는 추가 희망시 주영 연구원 연락 ☆")
 
-    try:  # 여기서 try 블록 시작
+    # 세션 상태 초기화
+    if "analysis_completed" not in st.session_state:
+        st.session_state.analysis_completed = False
+    
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+
+    try:
         # Initialize services
         service = init_drive_service()
         embeddings = get_embeddings()
@@ -116,11 +123,94 @@ def main():
         status_container = st.container()
         chat_container = st.container()
         
-        # ...나머지 코드...
+        # 분석이 완료되지 않은 경우에만 실행
+        if not st.session_state.analysis_completed:
+            with status_container:
+                status_placeholder = st.empty()
+                
+                # Process PDFs with memory management
+                all_texts = []
+                total_files = len(pdf_files)
+                
+                for idx, pdf in enumerate(pdf_files, 1):
+                    status_placeholder.info(f"📄 매뉴얼 분석 중... ({idx}/{total_files})\n\n현재 처리 중: {pdf['name']}")
+                    documents = process_pdf(pdf, service)
+                    all_texts.extend(documents)
+                
+                # Text splitting
+                status_placeholder.info("📄 텍스트 분할 작업 진행 중...")
+                text_splitter = RecursiveCharacterTextSplitter(
+                    chunk_size=1000,
+                    chunk_overlap=100,
+                    length_function=len,
+                    separators=["\n\n", "\n", " ", ""]
+                )
+                split_texts = text_splitter.split_documents(all_texts)
+                
+                # Create vector store
+                status_placeholder.info("📄 벡터 저장소 생성 중...")
+                vector_store = create_vector_store(split_texts, embeddings)
+                
+                if not vector_store:
+                    st.error("벡터 저장소 생성 실패")
+                    return
+                
+                st.session_state.vector_store = vector_store
+                st.session_state.analysis_completed = True
 
+        # Show completion message in status container
+        with status_container:
+            if st.session_state.analysis_completed:
+                st.success("✅ 매뉴얼 분석이 완료되었습니다. 질문해 주세요!")
+
+        # 채팅 인터페이스
         with chat_container:
             if st.session_state.analysis_completed:
-                # 초기화 코드...
+                # Chat interface setup
+                retriever = st.session_state.vector_store.as_retriever(search_kwargs={"k": 3})
+                
+                system_template = """
+                You are an expert AI assistant for IPR manuals. Base your answers strictly on the provided context.
+
+                Guidelines:
+                1. ALWAYS answer in Korean
+                2. Use Markdown format
+                3. Keep responses concise (2-4 sentences)
+                4. If unsure, say "확실하지 않습니다"
+                5. Cite source documents when possible
+                Context:
+                ----------------
+                {context}
+                """
+                
+                messages = [
+                    SystemMessagePromptTemplate.from_template(system_template),
+                    HumanMessagePromptTemplate.from_template("{question}")
+                ]
+                prompt = ChatPromptTemplate.from_messages(messages)
+
+                # Initialize memory if not exists
+                if "memory" not in st.session_state:
+                    st.session_state.memory = ConversationBufferMemory(
+                        memory_key="chat_history",
+                        return_messages=True,
+                        output_key="answer"
+                    )
+
+                # Initialize LLM and chain
+                llm = ChatGoogleGenerativeAI(
+                    model="gemini-2.0-flash",
+                    temperature=0.7,
+                    max_output_tokens=2048,
+                )
+
+                chain = ConversationalRetrievalChain.from_llm(
+                    llm=llm,
+                    retriever=retriever,
+                    memory=st.session_state.memory,
+                    combine_docs_chain_kwargs={'prompt': prompt},
+                    return_source_documents=True
+                )
 
                 # Handle new messages
                 if prompt := st.chat_input("📝 질문을 입력하세요"):
@@ -150,9 +240,8 @@ def main():
                     with st.chat_message(message["role"]):
                         st.markdown(message["content"])
 
-    except Exception as e:  # 여기서 try 블록 끝
+    except Exception as e:
         st.error(f"🚨 시스템 오류 발생: {str(e)}")
 
-      
 if __name__ == "__main__":
     main()
