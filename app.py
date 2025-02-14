@@ -125,7 +125,7 @@ try:
         # ✅ 메모리 설정
         memory = ConversationBufferMemory(
             memory_key="chat_history",
-            return_messages=True
+            return_messages=True,
             output_key="answer"  # 출력 키를 명시적으로 지정
         )
 
