@@ -15,6 +15,18 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 import tempfile
 
+st.write("🔍 Checking secrets...")
+
+if "GOOGLE_API_KEY" not in st.secrets:
+    st.error("🚨 `GOOGLE_API_KEY`가 `secrets.toml`에 설정되지 않았습니다.")
+else:
+    st.success("✅ `GOOGLE_API_KEY` 로드 성공!")
+
+if "google_credentials" not in st.secrets:
+    st.error("🚨 `google_credentials`가 `secrets.toml`에 설정되지 않았습니다.")
+else:
+    st.success("✅ `google_credentials` 로드 성공!")
+
 # Google Gemini API 키 설정
 os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
 
