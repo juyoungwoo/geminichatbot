@@ -82,7 +82,7 @@ def process_pdf(pdf, service):
         st.warning(f"⚠️ {pdf['name']} 처리 중 오류 발생: {str(e)}")
         return []
 
-# 벡터 저장소 생성 함수
+# 벡터 저장소 생성 함수 추가
 def create_vector_store(texts, embeddings):
     try:
         return FAISS.from_documents(texts, embeddings)
@@ -93,13 +93,6 @@ def create_vector_store(texts, embeddings):
 def main():
     st.title("📄 IPR실 매뉴얼 AI 챗봇")
     st.write("☆ 자료 수정 또는 추가 희망시 주영 연구원 연락 ☆")
-
-    # 세션 상태 초기화
-    if "analysis_completed" not in st.session_state:
-        st.session_state.analysis_completed = False
-    
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
 
     try:
         # Initialize services
@@ -120,11 +113,14 @@ def main():
             st.warning("📂 매뉴얼 폴더에 PDF 파일이 없습니다.")
             return
 
+        # 상태 표시를 위한 컨테이너
         status_container = st.container()
         chat_container = st.container()
         
-        # 분석이 완료되지 않은 경우에만 실행
-        if not st.session_state.analysis_completed:
+        # 분석 상태 확인
+        if "analysis_completed" not in st.session_state:
+            st.session_state.analysis_completed = False
+            
             with status_container:
                 status_placeholder = st.empty()
                 
@@ -158,7 +154,7 @@ def main():
                 st.session_state.vector_store = vector_store
                 st.session_state.analysis_completed = True
 
-        # Show completion message in status container
+        # Show completion message
         with status_container:
             if st.session_state.analysis_completed:
                 st.success("✅ 매뉴얼 분석이 완료되었습니다. 질문해 주세요!")
@@ -212,6 +208,15 @@ def main():
                     return_source_documents=True
                 )
 
+                # Initialize chat history
+                if "messages" not in st.session_state:
+                    st.session_state.messages = []
+
+                # Display chat history
+                for message in st.session_state.messages:
+                    with st.chat_message(message["role"]):
+                        st.markdown(message["content"])
+
                 # Handle new messages
                 if prompt := st.chat_input("📝 질문을 입력하세요"):
                     st.session_state.messages.append({"role": "user", "content": prompt})
@@ -235,13 +240,8 @@ def main():
                                 "content": response['answer']
                             })
 
-                # Display chat history
-                for message in st.session_state.messages:
-                    with st.chat_message(message["role"]):
-                        st.markdown(message["content"])
-
     except Exception as e:
         st.error(f"🚨 시스템 오류 발생: {str(e)}")
-
+        
 if __name__ == "__main__":
     main()
