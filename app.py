@@ -137,14 +137,15 @@ try:
            max_tokens=512
        )
 
-       # Conversational QA 체인 설정
-       chain = ConversationalRetrievalChain.from_llm(
-           llm=llm,
-           retriever=retriever,
-           return_source_documents=True,
-           chain_type_kwargs=chain_type_kwargs
-       )
+       prompt = ChatPromptTemplate.from_messages(messages)
 
+       chain = ConversationalRetrievalChain.from_llm(
+          llm=llm,
+          retriever=retriever,
+          return_source_documents=True,
+          combine_docs_chain_kwargs={"prompt": prompt}
+       )
+      
        # 대화 기록 저장
        if "chat_history" not in st.session_state:
            st.session_state.chat_history = []
