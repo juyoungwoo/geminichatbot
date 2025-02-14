@@ -92,7 +92,6 @@ def create_vector_store(texts, embeddings):
 
 def main():
     st.title("📄 IPR실 매뉴얼 AI 챗봇")
-    st.write("☆ 자료 수정 또는 추가 희망시 주영 연구원 연락 ☆")
 
     try:
         # Initialize services
@@ -247,8 +246,6 @@ def main():
     except Exception as e:
         st.error(f"🚨 시스템 오류 발생: {str(e)}")
 
-if __name__ == "__main__":
-    main()
-        
+
 if __name__ == "__main__":
     main()
