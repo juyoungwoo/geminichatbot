@@ -87,124 +87,147 @@ def main():
     st.write("☆ 자료 수정 또는 추가 희망시 주영 연구원 연락 ☆")
 
     try:
-        # Google Drive 연결 및 PDF 파일 가져오기
+        # Initialize services
         service = init_drive_service()
-        if not service:
-            st.error("Google Drive 서비스 연결 실패")
+        embeddings = get_embeddings()
+        
+        if not service or not embeddings:
+            st.error("필수 서비스 초기화 실패")
             return
 
-        folder_id = st.secrets["FOLDER_ID"]
-        pdf_files = get_pdf_files(service, folder_id)
+        folder_id = st.secrets.get("FOLDER_ID")
+        if not folder_id:
+            st.error("폴더 ID가 설정되지 않았습니다.")
+            return
 
+        pdf_files = get_pdf_files(service, folder_id)
         if not pdf_files:
             st.warning("📂 매뉴얼 폴더에 PDF 파일이 없습니다.")
             return
+
+        # Create two columns for layout
+        col1, col2 = st.columns([2, 3])
         
-        # 상태 표시를 위한 placeholder
-        status_placeholder = st.empty()
-        
-        # PDF 처리 및 벡터 저장소 생성
-        all_texts = []
-        total_steps = len(pdf_files) + 2
-        
-        # PDF 파일 처리
-        for idx, pdf in enumerate(pdf_files):
-            progress = (idx / total_steps) * 100
-            status_placeholder.info(f"📄 매뉴얼 분석 중... ({progress:.1f}%)\n\n현재 처리 중: {pdf['name']}")
-            documents = process_pdf(pdf, service)
-            all_texts.extend(documents)
-        
-        # 텍스트 분할
-        progress = (len(pdf_files) / total_steps) * 100
-        status_placeholder.info(f"📄 매뉴얼 분석 중... ({progress:.1f}%)\n\n텍스트 분할 작업 진행 중...")
-        
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=100,
-            length_function=len,
-            separators=["\n\n", "\n", " ", ""],
-            is_separator_regex=False
-        )
-        split_texts = text_splitter.split_documents(all_texts)
-        
-        # 벡터 저장소 생성
-        progress = ((len(pdf_files) + 1) / total_steps) * 100
-        status_placeholder.info(f"📄 매뉴얼 분석 중... ({progress:.1f}%)\n\n벡터 저장소 생성 중...")
-        
-        embeddings = get_embeddings()
-        vector_store = FAISS.from_documents(split_texts, embeddings)
-        
-        # 분석 완료 메시지
-        status_placeholder.success("✅ 매뉴얼 분석이 완료되었습니다. 질문해 주세요!")
+        with col1:
+            status_placeholder = st.empty()
+            
+            # Check if analysis is already completed
+            if "analysis_completed" not in st.session_state:
+                st.session_state.analysis_completed = False
+                
+                # Process PDFs with memory management
+                all_texts = []
+                total_files = len(pdf_files)
+                
+                for idx, pdf in enumerate(pdf_files, 1):
+                    status_placeholder.info(f"📄 매뉴얼 분석 중... ({idx}/{total_files})\n\n현재 처리 중: {pdf['name']}")
+                    documents = process_single_pdf(pdf, service)
+                    all_texts.extend(documents)
+                
+                # Text splitting
+                status_placeholder.info("📄 텍스트 분할 작업 진행 중...")
+                text_splitter = RecursiveCharacterTextSplitter(
+                    chunk_size=1000,
+                    chunk_overlap=100,
+                    length_function=len,
+                    separators=["\n\n", "\n", " ", ""]
+                )
+                split_texts = text_splitter.split_documents(all_texts)
+                
+                # Create vector store
+                status_placeholder.info("📄 벡터 저장소 생성 중...")
+                vector_store = create_vector_store(split_texts, embeddings)
+                
+                if not vector_store:
+                    st.error("벡터 저장소 생성 실패")
+                    return
+                
+                st.session_state.vector_store = vector_store
+                st.session_state.analysis_completed = True
 
-        # 나머지 코드는 동일하게 유지
-        retriever = vector_store.as_retriever(search_kwargs={"k": 3})
+            # Show completion message
+            if st.session_state.analysis_completed:
+                status_placeholder.success("✅ 매뉴얼 분석이 완료되었습니다. 질문해 주세요!")
 
-        system_template = """
-        You are an expert AI assistant for IPR manuals. Base your answers strictly on the provided context.
+        with col2:
+            if st.session_state.analysis_completed:
+                # Chat interface setup
+                retriever = st.session_state.vector_store.as_retriever(search_kwargs={"k": 3})
+                
+                system_template = """
+                You are an expert AI assistant for IPR manuals. Base your answers strictly on the provided context.
 
-        Guidelines:
-        1. ALWAYS answer in Korean
-        2. Use Markdown format
-        3. Keep responses concise (2-4 sentences)
-        4. If unsure, say "확실하지 않습니다"
-        5. Cite source documents when possible
-        Context:
-        ----------------
-        {context}
-        """
-        messages = [
-            SystemMessagePromptTemplate.from_template(system_template),
-            HumanMessagePromptTemplate.from_template("{question}")
-        ]
-        prompt = ChatPromptTemplate.from_messages(messages)
+                Guidelines:
+                1. ALWAYS answer in Korean
+                2. Use Markdown format
+                3. Keep responses concise (2-4 sentences)
+                4. If unsure, say "확실하지 않습니다"
+                5. Cite source documents when possible
+                Context:
+                ----------------
+                {context}
+                """
+                
+                messages = [
+                    SystemMessagePromptTemplate.from_template(system_template),
+                    HumanMessagePromptTemplate.from_template("{question}")
+                ]
+                prompt = ChatPromptTemplate.from_messages(messages)
 
-        memory = ConversationBufferMemory(
-            memory_key="chat_history",
-            return_messages=True,
-            output_key="answer",
-            verbose=False
-        )
+                # Initialize memory if not exists
+                if "memory" not in st.session_state:
+                    st.session_state.memory = ConversationBufferMemory(
+                        memory_key="chat_history",
+                        return_messages=True,
+                        output_key="answer"
+                    )
 
-        llm = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash",
-            temperature=0.7,
-            max_output_tokens=2048,
-        )
+                # Initialize LLM and chain
+                llm = ChatGoogleGenerativeAI(
+                    model="gemini-2.0-flash",
+                    temperature=0.7,
+                    max_output_tokens=2048,
+                )
 
-        chain = ConversationalRetrievalChain.from_llm(
-            llm=llm,
-            retriever=retriever,
-            memory=memory,
-            combine_docs_chain_kwargs={'prompt': prompt},
-            return_source_documents=True
-        )
+                chain = ConversationalRetrievalChain.from_llm(
+                    llm=llm,
+                    retriever=retriever,
+                    memory=st.session_state.memory,
+                    combine_docs_chain_kwargs={'prompt': prompt},
+                    return_source_documents=True
+                )
 
-        if "messages" not in st.session_state:
-            st.session_state.messages = []
+                # Initialize chat history
+                if "messages" not in st.session_state:
+                    st.session_state.messages = []
 
-        for message in st.session_state.messages:
-            with st.chat_message(message["role"]):
-                st.markdown(message["content"])
+                # Display chat history
+                for message in st.session_state.messages:
+                    with st.chat_message(message["role"]):
+                        st.markdown(message["content"])
 
-        if prompt := st.chat_input("📝 질문을 입력하세요"):
-            st.session_state.messages.append({"role": "user", "content": prompt})
-            with st.chat_message("user"):
-                st.markdown(prompt)
+                # Handle new messages
+                if prompt := st.chat_input("📝 질문을 입력하세요"):
+                    st.session_state.messages.append({"role": "user", "content": prompt})
+                    with st.chat_message("user"):
+                        st.markdown(prompt)
 
-            with st.chat_message("assistant"):
-                with st.spinner("🤖 답변을 생성하고 있습니다..."):
-                    response = chain({"question": prompt})
-                    st.markdown(response['answer'])
-                    
-                    sources = set([doc.metadata['source'] for doc in response['source_documents']])
-                    if sources:
-                        st.markdown("---")
-                        st.markdown("**참고한 문서:**")
-                        for source in sources:
-                            st.markdown(f"- {source}")
+                    with st.chat_message("assistant"):
+                        with st.spinner("🤖 답변을 생성하고 있습니다..."):
+                            response = chain({"question": prompt})
+                            st.markdown(response['answer'])
                             
-                    st.session_state.messages.append({"role": "assistant", "content": response['answer']})
+                            sources = set([doc.metadata['source'] for doc in response['source_documents']])
+                            if sources:
+                                st.markdown("---")
+                                st.markdown("**참고한 문서:**")
+                                for source in sources:
+                                    st.markdown(f"- {source}")
+                            
+                            st.session_state.messages.append({
+                                "role": "assistant",
+                                "content": response['answer']
+                            })
 
     except Exception as e:
         st.error(f"🚨 시스템 오류 발생: {str(e)}")
