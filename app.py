@@ -223,18 +223,16 @@ def main():
                             "content": response['answer']
                         })
 
-                # Display chat history in reverse order (newest first)
-                for message in reversed(st.session_state.messages):
-                    with st.chat_message(message["role"]):
-                        st.markdown(message["content"])
-                        if message["role"] == "assistant" and message == st.session_state.messages[-1]:
-                            # 소스 문서 표시 (마지막 메시지인 경우에만)
+                # Display chat history in chronological order
+                for message in st.session_state.messages:
+                    if message["role"] == "user":
+                        st.text_input("질문:", value=message["content"], disabled=True)
+                    else:
+                        st.text_area("답변:", value=message["content"], disabled=True, height=100)
+                        if message == st.session_state.messages[-1]:  # 최신 답변인 경우에만 소스 표시
                             sources = set([doc.metadata['source'] for doc in response['source_documents']])
                             if sources:
-                                st.markdown("---")
-                                st.markdown("**참고한 문서:**")
-                                for source in sources:
-                                    st.markdown(f"- {source}")
+                                st.caption("참고 문서: " + ", ".join(sources))
 
     except Exception as e:
         st.error(f"🚨 시스템 오류 발생: {str(e)}")
