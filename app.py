@@ -12,7 +12,7 @@ from langchain.prompts.chat import (
     SystemMessagePromptTemplate,
     HumanMessagePromptTemplate,
 )
-from langchain_core.memory import ConversationBufferMemory  # memory import 수정
+from langchain.memory import ConversationBufferMemory
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
