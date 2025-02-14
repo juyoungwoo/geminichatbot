@@ -4,7 +4,7 @@ import tempfile
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain.text_splitter import RecursiveCharacterTextSplitter 
+from langchain.text_splitter import RecursiveCharacterTextSplitter  
 from langchain_community.vectorstores import FAISS
 from langchain.chains import ConversationalRetrievalChain
 from langchain.prompts.chat import (
@@ -68,35 +68,44 @@ try:
     else:
         st.info(f"📄 총 {len(pdf_files)}개의 매뉴얼을 분석 중...")
 
-        # ✅ 모든 PDF 파일 처리 및 임베딩 벡터 저장
-        @st.cache_resource
-        def process_all_pdfs():
-            all_texts = []
-
-            for pdf in pdf_files:
-                try:
-                    request = service.files().get_media(fileId=pdf['id'])
-                    file_content = request.execute()
-
-                    with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
-                        temp_file.write(file_content)
-                        pdf_path = temp_file.name
-
-                    loader = PyPDFLoader(pdf_path)
-                    documents = loader.load()
-
-                    for doc in documents:
-                        doc.metadata['source'] = pdf['name']
-
-                    all_texts.extend(documents)
-
-                    os.unlink(pdf_path)  # 사용 후 파일 삭제
-
-                except Exception as e:
-                    st.warning(f"⚠️ {pdf['name']} 처리 중 오류 발생: {str(e)}")
+@st.cache_resource(show_spinner=False)
+def process_all_pdfs():
+    all_texts = []
+    progress_text = st.empty()
+    progress_bar = st.progress(0)
+    
+    for idx, pdf in enumerate(pdf_files):
+        try:
+            progress_text.text(f"처리 중: {pdf['name']}")
+            progress_bar.progress((idx + 1) / len(pdf_files))
+            
+            request = service.files().get_media(fileId=pdf['id'])
+            file_content = request.execute()
+            
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
+                temp_file.write(file_content)
+                pdf_path = temp_file.name
+            
+            loader = PyPDFLoader(pdf_path)
+            documents = loader.load()
+            
+            for doc in documents:
+                doc.metadata['source'] = pdf['name']
+            
+            all_texts.extend(documents)
+            os.unlink(pdf_path)
+            
+        except Exception as e:
+            st.warning(f"⚠️ {pdf['name']} 처리 중 오류 발생: {str(e)}")
+    
+    progress_text.empty()
+    progress_bar.empty()
+    
+    split_texts = text_splitter.split_documents(all_texts)
+    return create_vector_store(split_texts)
 
             # ✅ 문서 분할 최적화
-            text_splitter = ecursiveCharacterTextSplitter(
+            text_splitter = RecursiveCharacterTextSplitter(
                 chunk_size=1000,  
                 chunk_overlap=100,  
                 length_function=len,
@@ -113,15 +122,18 @@ try:
 
         # ✅ 벡터 스토어 생성
         vector_store = process_all_pdfs()
-        retriever = vector_store.as_retriever(search_kwargs={"k": 3})  # 검색 결과 최적화
+        retriever = vector_store.as_retriever(search_kwargs={"k": 2})  # 검색 결과 최적화
 
         # ✅ AI 프롬프트 설정
         system_template = """
-        다음 문맥을 참고하여 사용자의 질문에 간단명료하게 답변하세요.
-        답을 모르는 경우 "모르겠습니다"라고 답변하고, 답변을 만들어내려 하지 마세요.
-        가능한 경우 정보의 출처(문서)를 언급해주세요.
+        Use the following pieces of context to answer the users question shortly.
+        Given the following summaries of a long document and a question.
+        If you don't know the answer, just say that "I don't know", don't try to make up an answer.
+        If possible, mention which document (source) the information comes from.
         ----------------
-        {context}
+        {summaries}
+        You MUST answer in Korean and in Markdown format:
+
         """
         messages = [
             SystemMessagePromptTemplate.from_template(system_template),
