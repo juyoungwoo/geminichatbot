@@ -19,7 +19,7 @@ from googleapiclient.discovery import build
 # Gemini API 키 설정
 os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
 
-# 임베딩 모델 캐싱 (메모리 절약)
+# 임베딩 모델 캐싱
 @st.cache_resource
 def get_embeddings():
     return GoogleGenerativeAIEmbeddings(
@@ -53,67 +53,27 @@ def get_pdf_files(service, folder_id):
         st.error(f"Google Drive API 오류: {str(e)}")
         return []
 
-# PDF 처리 및 벡터 저장소 생성
-@st.cache_resource(show_spinner=False)
-def process_all_pdfs(pdf_files, _service, _status_placeholder):
-    all_texts = []
-    total_steps = len(pdf_files) + 2  # PDF 처리 + 텍스트 분할 + 벡터 저장소 생성
-    current_step = 0
-    
+# PDF 처리 및 벡터 저장소 생성 (캐시 제거)
+def process_pdf(pdf, service):
     try:
-        # PDF 파일 처리
-        for idx, pdf in enumerate(pdf_files):
-            try:
-                current_step = idx
-                progress = (current_step / total_steps) * 100
-                _status_placeholder.info(f"📄 매뉴얼 분석 중... ({progress:.1f}%)\n\n현재 처리 중: {pdf['name']}")
-                
-                request = _service.files().get_media(fileId=pdf['id'])
-                file_content = request.execute()
-                
-                with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
-                    temp_file.write(file_content)
-                    pdf_path = temp_file.name
-                
-                loader = PyPDFLoader(pdf_path)
-                documents = loader.load()
-                
-                for doc in documents:
-                    doc.metadata['source'] = pdf['name']
-                
-                all_texts.extend(documents)
-                os.unlink(pdf_path)
-                
-            except Exception as e:
-                st.warning(f"⚠️ {pdf['name']} 처리 중 오류 발생: {str(e)}")
+        request = service.files().get_media(fileId=pdf['id'])
+        file_content = request.execute()
         
-        # 텍스트 분할 단계
-        current_step = len(pdf_files)
-        progress = (current_step / total_steps) * 100
-        _status_placeholder.info(f"📄 매뉴얼 분석 중... ({progress:.1f}%)\n\n텍스트 분할 작업 진행 중...")
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
+            temp_file.write(file_content)
+            pdf_path = temp_file.name
         
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=100,
-            length_function=len,
-            separators=["\n\n", "\n", " ", ""],
-            is_separator_regex=False
-        )
-        split_texts = text_splitter.split_documents(all_texts)
+        loader = PyPDFLoader(pdf_path)
+        documents = loader.load()
         
-        # 벡터 저장소 생성 단계
-        current_step = len(pdf_files) + 1
-        progress = (current_step / total_steps) * 100
-        _status_placeholder.info(f"📄 매뉴얼 분석 중... ({progress:.1f}%)\n\n벡터 저장소 생성 중...")
+        for doc in documents:
+            doc.metadata['source'] = pdf['name']
         
-        embeddings = get_embeddings()
-        vector_store = FAISS.from_documents(split_texts, embeddings)
-        
-        return vector_store
-        
+        os.unlink(pdf_path)
+        return documents
     except Exception as e:
-        st.error(f"PDF 처리 중 오류 발생: {str(e)}")
-        return None
+        st.warning(f"⚠️ {pdf['name']} 처리 중 오류 발생: {str(e)}")
+        return []
 
 def main():
     st.title("📄 IPR실 매뉴얼 AI 챗봇")
@@ -126,28 +86,53 @@ def main():
             st.error("Google Drive 서비스 연결 실패")
             return
 
-        folder_id = st.secrets["FOLDER_ID"]  # secrets에서 ID 가져오기
+        folder_id = st.secrets["FOLDER_ID"]
         pdf_files = get_pdf_files(service, folder_id)
 
         if not pdf_files:
             st.warning("📂 매뉴얼 폴더에 PDF 파일이 없습니다.")
             return
         
-        # 상태 표시를 위한 placeholder 생성
+        # 상태 표시를 위한 placeholder
         status_placeholder = st.empty()
         
-        # 벡터 스토어 생성 (진행률 표시 포함)
-        vector_store = process_all_pdfs(pdf_files, service, status_placeholder)
-        if not vector_store:
-            st.error("벡터 스토어 생성 실패")
-            return
+        # PDF 처리 및 벡터 저장소 생성
+        all_texts = []
+        total_steps = len(pdf_files) + 2
         
-        # 분석 완료 메시지로 업데이트
+        # PDF 파일 처리
+        for idx, pdf in enumerate(pdf_files):
+            progress = (idx / total_steps) * 100
+            status_placeholder.info(f"📄 매뉴얼 분석 중... ({progress:.1f}%)\n\n현재 처리 중: {pdf['name']}")
+            documents = process_pdf(pdf, service)
+            all_texts.extend(documents)
+        
+        # 텍스트 분할
+        progress = (len(pdf_files) / total_steps) * 100
+        status_placeholder.info(f"📄 매뉴얼 분석 중... ({progress:.1f}%)\n\n텍스트 분할 작업 진행 중...")
+        
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000,
+            chunk_overlap=100,
+            length_function=len,
+            separators=["\n\n", "\n", " ", ""],
+            is_separator_regex=False
+        )
+        split_texts = text_splitter.split_documents(all_texts)
+        
+        # 벡터 저장소 생성
+        progress = ((len(pdf_files) + 1) / total_steps) * 100
+        status_placeholder.info(f"📄 매뉴얼 분석 중... ({progress:.1f}%)\n\n벡터 저장소 생성 중...")
+        
+        embeddings = get_embeddings()
+        vector_store = FAISS.from_documents(split_texts, embeddings)
+        
+        # 분석 완료 메시지
         status_placeholder.success("✅ 매뉴얼 분석이 완료되었습니다. 질문해 주세요!")
 
+        # 나머지 코드는 동일하게 유지
         retriever = vector_store.as_retriever(search_kwargs={"k": 3})
 
-        # AI 프롬프트 설정
         system_template = """
         You are an expert AI assistant for IPR manuals. Base your answers strictly on the provided context.
 
@@ -167,7 +152,6 @@ def main():
         ]
         prompt = ChatPromptTemplate.from_messages(messages)
 
-        # 메모리 설정
         memory = ConversationBufferMemory(
             memory_key="chat_history",
             return_messages=True,
@@ -175,14 +159,12 @@ def main():
             verbose=False
         )
 
-        # LLM 모델 설정
         llm = ChatGoogleGenerativeAI(
             model="gemini-2.0-flash",
             temperature=0.7,
             max_output_tokens=2048,
         )
 
-        # 대화 체인 설정
         chain = ConversationalRetrievalChain.from_llm(
             llm=llm,
             retriever=retriever,
@@ -191,7 +173,6 @@ def main():
             return_source_documents=True
         )
 
-        # 채팅 인터페이스
         if "messages" not in st.session_state:
             st.session_state.messages = []
 
@@ -209,7 +190,6 @@ def main():
                     response = chain({"question": prompt})
                     st.markdown(response['answer'])
                     
-                    # 참고한 문서 출처 표시
                     sources = set([doc.metadata['source'] for doc in response['source_documents']])
                     if sources:
                         st.markdown("---")
