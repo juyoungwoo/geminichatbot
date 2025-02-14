@@ -143,7 +143,7 @@ def main():
         If you don't know the answer, just say that "I don't know", don't try to make up an answer.
         If possible, mention which document (source) the information comes from.
         ----------------
-        {summaries}
+        {context}
         You MUST answer in Korean and in Markdown format:
         """
         messages = [
