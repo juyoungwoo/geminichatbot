@@ -223,16 +223,12 @@ def main():
                             "content": response['answer']
                         })
 
-                # Display chat history in chronological order
-                for message in reversed(st.session_state.messages):
-                    if message["role"] == "user":
-                        st.markdown(f"**🙋 질문:** {message['content']}")
-                    else:
-                        st.markdown(f"**🤖 답변:** {message['content']}")
-                        if message == st.session_state.messages[-1]:  # 최신 답변일 경우에만 소스 표시
-                            sources = set([doc.metadata['source'] for doc in response['source_documents']])
-                            if sources:
-                                st.caption("📌 참고 문서: " + ", ".join(sources))
+                # 최신 질문과 답변이 위에 표시되도록 역순 출력 (질문-답변 순서 유지)
+                for i in range(len(st.session_state.messages) -1, -1, -2):
+                    if i > 0 and st.session_state.messages[i-1]["role"] == "user":
+                        st.markdown(f"**🙋 질문:** {st.session_state.messages[i-1]['content']}")
+                    st.markdown(f"**🤖 답변:** {st.session_state.messages[i]['content']}")
+
 
     except Exception as e:
         st.error(f"🚨 시스템 오류 발생: {str(e)}")
