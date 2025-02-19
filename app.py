@@ -224,11 +224,11 @@ def main():
                         })
 
                 # Display chat history in chronological order
-                for message in st.session_state.messages:
+                for message in reversed(st.session_state.messages):
                     if message["role"] == "user":
-                        st.markdown(f"**🙋 사용자:** {message['content']}")
+                        st.markdown(f"**🙋 질문:** {message['content']}")
                     else:
-                        st.markdown(f"**🤖 챗봇:** {message['content']}")
+                        st.markdown(f"**🤖 답변:** {message['content']}")
                         if message == st.session_state.messages[-1]:  # 최신 답변일 경우에만 소스 표시
                             sources = set([doc.metadata['source'] for doc in response['source_documents']])
                             if sources:
