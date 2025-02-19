@@ -91,8 +91,8 @@ def create_vector_store(texts, embeddings):
         return None
 
 def main():
-    st.title("📄 IPR실 매뉴얼 AI 챗봇")
-    st.write("☆ 자료 수정 또는 추가 희망시 주영 연구원 연락 ☆")
+    st.title("📄 IPR실 논문 매뉴얼 AI 챗봇")
+    st.write("LLM 기반으로 일부 답변이 부정확할 수 있습니다")
 
     try:
         # Initialize services
