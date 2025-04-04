@@ -16,7 +16,7 @@ from langchain.memory import ConversationBufferMemory
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
-# 📌 환경 변수 설정
+# 🔑 API 키 설정
 os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
 
 @st.cache_resource
@@ -77,9 +77,9 @@ def create_vector_store(texts, embeddings):
         return None
 
 def main():
-    st.set_page_config(page_title="기술 소개 챗봇", layout="wide")
-    st.title("💡 보유 기술 안내 챗봇")
-    st.write("우리 회사가 보유한 기술 중 궁금한 내용을 물어보세요.")
+    st.set_page_config(page_title="보유 기술 챗봇", layout="wide")
+    st.title("💡 우리 회사 보유 기술 안내 챗봇")
+    st.write("궁금한 기술 분야를 입력하면 관련된 보유 기술 자료를 안내합니다.")
 
     try:
         service = init_drive_service()
@@ -134,19 +134,25 @@ def main():
             with status_container:
                 st.success("✅ 기술 자료 분석 완료! 궁금한 기술을 질문해보세요.")
 
-            retriever = st.session_state.vector_store.as_retriever(search_kwargs={"k": 5})
+            # 🔍 검색에서 최소 5개 이상 결과 확보
+            retriever = st.session_state.vector_store.as_retriever(search_kwargs={"k": 10})
+
+            # 🧠 프롬프트 재설계
             system_template = """
-            너는 우리 회사가 보유한 기술 관련 PDF 자료를 기반으로 질문자의 요청에 응답하는 AI 기술 컨설턴트입니다.
+            너는 우리 회사의 기술 소개 자료를 기반으로 질문자가 어떤 기술 분야에 관심이 있는지를 파악한 후,
+            그와 관련된 **우리 회사가 보유한 기술**을 최소 5건 이상 제시해야 합니다.
 
-            다음 기준에 따라 질문에 답변하세요:
+            답변 조건:
+            1. 정의 설명은 생략하고, 관련 기술이 있다면 바로 기술명을 제시합니다.
+            2. 각 기술은 다음 정보를 포함해야 합니다:
+               - 기술 설명 요약 (간단하게)
+               - 문서 이름
+               - 문서 내 페이지 번호
+            3. 관련 기술이 명확하지 않아도, 유사 기술을 **최소 5건 이상** 추천해야 합니다.
+            4. 답변은 반드시 **한국어**로 작성하고, Markdown 형식으로 구성합니다.
+            5. 출처 문서 외의 정보는 포함하지 말고, 문서 기반으로만 답변합니다.
 
-            1. 질문자가 어떤 기술에 관심이 있는지 파악하여, 그와 관련된 **우리 회사가 보유한 기술**을 안내합니다.
-            2. 가능한 경우, 관련 기술이 언급된 **문서 이름과 페이지 번호**를 함께 명시합니다.
-            3. 답변은 반드시 **한국어**로 작성하며, **2~4문장 이내**로 간결하게 설명합니다.
-            4. 관련된 기술이 확실하지 않으면 "확실하지 않습니다"라고 말합니다.
-            5. 모든 답변은 제공된 기술자료 내용에 기반해야 하며, 추측하지 않습니다.
-
-            기술자료 요약:
+            기술자료:
             ----------------
             {context}
             """
@@ -181,23 +187,25 @@ def main():
                 st.session_state.messages = []
 
             # 📝 사용자 입력 처리
-            if prompt := st.chat_input("궁금한 기술이나 특허에 대해 질문해보세요"):
+            if prompt := st.chat_input("관련 기술이 궁금한 분야를 입력하세요"):
                 st.session_state.messages.append({"role": "user", "content": prompt})
-                with st.spinner("🤖 답변 생성 중..."):
+                with st.spinner("🤖 관련 기술을 찾고 있습니다..."):
                     response = chain({"question": prompt})
                     answer = response["answer"]
 
-                    # 🔍 출처 문서 정리
                     source_docs = response.get("source_documents", [])
                     sources = set()
+
                     for doc in source_docs:
                         filename = doc.metadata.get("source", "알 수 없는 문서")
                         page = doc.metadata.get("page", "알 수 없는 페이지")
                         sources.add(f"- `{filename}`, 페이지 {page}")
 
-                    # 🔧 답변에 출처 추가
                     if sources:
                         answer += "\n\n---\n📄 **참고 문서:**\n" + "\n".join(sources)
+
+                    if len(source_docs) < 5:
+                        st.warning("📌 관련성이 낮은 기술도 포함하여 최소 5건 제시합니다.")
 
                     st.session_state.messages.append({
                         "role": "assistant",
