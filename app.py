@@ -16,8 +16,10 @@ from langchain.memory import ConversationBufferMemory
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
+# 🔐 API 키 설정
 os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
 
+# 🧠 임베딩 모델
 @st.cache_resource
 def get_embeddings():
     return GoogleGenerativeAIEmbeddings(
@@ -25,6 +27,7 @@ def get_embeddings():
         google_api_key=st.secrets["GOOGLE_API_KEY"]
     )
 
+# 📂 Google Drive API 초기화
 @st.cache_resource
 def init_drive_service():
     try:
@@ -37,6 +40,7 @@ def init_drive_service():
         st.error(f"Drive 서비스 초기화 오류: {str(e)}")
         return None
 
+# 📁 폴더 내 PDF 목록 가져오기
 def get_pdf_files(service, folder_id):
     try:
         results = service.files().list(
@@ -48,6 +52,7 @@ def get_pdf_files(service, folder_id):
         st.error(f"Google Drive API 오류: {str(e)}")
         return []
 
+# 📄 PDF 분석 + 페이지 정보 추가
 def process_pdf(pdf, service):
     try:
         request = service.files().get_media(fileId=pdf['id'])
@@ -69,6 +74,7 @@ def process_pdf(pdf, service):
         st.warning(f"⚠️ {pdf['name']} 처리 중 오류 발생: {str(e)}")
         return []
 
+# 🧠 벡터 저장소 생성
 def create_vector_store(texts, embeddings):
     try:
         return FAISS.from_documents(texts, embeddings)
@@ -79,7 +85,7 @@ def create_vector_store(texts, embeddings):
 def main():
     st.set_page_config(page_title="보유 기술 챗봇", layout="wide")
     st.title("💡 우리 회사 보유 기술 안내 챗봇")
-    st.write("궁금한 기술 분야를 입력하면 관련된 보유 기술 자료를 안내합니다.")
+    st.write("관심 있는 기술을 입력하면 관련된 보유 기술을 알려드립니다.")
 
     try:
         service = init_drive_service()
@@ -98,29 +104,25 @@ def main():
             st.warning("📂 PDF 문서가 없습니다.")
             return
 
-        status_container = st.container()
-        chat_container = st.container()
-
         if "analysis_completed" not in st.session_state:
             st.session_state.analysis_completed = False
-            status_placeholder = status_container.empty()
+            status_placeholder = st.empty()
             all_texts = []
 
             for idx, pdf in enumerate(pdf_files, 1):
-                status_placeholder.info(f"📄 기술 문서 분석 중... ({idx}/{len(pdf_files)})\n현재: {pdf['name']}")
+                status_placeholder.info(f"📄 문서 분석 중 ({idx}/{len(pdf_files)}): {pdf['name']}")
                 documents = process_pdf(pdf, service)
                 all_texts.extend(documents)
 
-            status_placeholder.info("🧠 텍스트 분할 중...")
+            status_placeholder.info("🧠 문서 분할 중...")
             text_splitter = RecursiveCharacterTextSplitter(
                 chunk_size=1000,
                 chunk_overlap=100,
                 length_function=len,
-                separators=["\n\n", "\n", " ", ""]
             )
             split_texts = text_splitter.split_documents(all_texts)
 
-            status_placeholder.info("🧠 벡터 저장소 생성 중...")
+            status_placeholder.info("🧠 벡터 저장소 구축 중...")
             vector_store = create_vector_store(split_texts, embeddings)
 
             if not vector_store:
@@ -131,8 +133,7 @@ def main():
             st.session_state.analysis_completed = True
 
         if st.session_state.analysis_completed:
-            with status_container:
-                st.success("✅ 기술 자료 분석 완료! 궁금한 기술을 질문해보세요.")
+            st.success("✅ 기술 자료 분석 완료! 질문을 입력하세요.")
 
             retriever = st.session_state.vector_store.as_retriever(search_kwargs={"k": 10})
 
@@ -154,6 +155,7 @@ def main():
             ----------------
             {context}
             """
+
             messages = [
                 SystemMessagePromptTemplate.from_template(system_template),
                 HumanMessagePromptTemplate.from_template("{question}")
@@ -168,7 +170,7 @@ def main():
                 )
 
             llm = ChatGoogleGenerativeAI(
-                model="gemini-2.0-pro",
+                model="models/gemini-pro",  # ✅ 최신 안정 버전
                 temperature=0.7,
                 max_output_tokens=2048,
             )
@@ -184,39 +186,40 @@ def main():
             if "messages" not in st.session_state:
                 st.session_state.messages = []
 
-            if prompt := st.chat_input("관련 기술이 궁금한 분야를 입력하세요"):
+            # 사용자 입력 처리
+            if prompt := st.chat_input("관심 있는 기술 키워드 또는 분야를 입력하세요"):
                 st.session_state.messages.append({"role": "user", "content": prompt})
-                with st.spinner("🤖 관련 기술을 찾고 있습니다..."):
+
+                with st.spinner("🤖 기술 자료 검색 중..."):
                     response = chain({"question": prompt})
                     answer = response["answer"]
 
                     source_docs = response.get("source_documents", [])
                     sources = set()
-
                     for doc in source_docs:
                         filename = doc.metadata.get("source", "알 수 없는 문서")
                         page = doc.metadata.get("page", "알 수 없는 페이지")
-                        if isinstance(page, int):
-                            page += 1  # 사람 기준으로 1부터 시작
-                        sources.add(f"- 📄 `{filename}`, **페이지 {page}**")
+                        page_display = int(page) + 1 if isinstance(page, int) else page
+                        sources.add(f"- 📄 `{filename}`, **페이지 {page_display}**")
 
                     if sources:
                         answer += "\n\n---\n📑 **참고 문서 위치:**\n" + "\n".join(sources)
 
                     if len(source_docs) < 5:
-                        st.warning("📌 관련성이 낮은 기술도 포함하여 최소 5건 제시합니다.")
+                        st.warning("📌 관련성이 낮은 기술도 포함하여 최소 5건 제시했습니다.")
 
                     st.session_state.messages.append({
                         "role": "assistant",
                         "content": answer
                     })
 
+            # 채팅 UI 출력
             for i in range(len(st.session_state.messages) - 1, -1, -2):
                 if i > 0 and st.session_state.messages[i - 1]["role"] == "user":
                     st.markdown(f"**🙋 질문:** {st.session_state.messages[i - 1]['content']}")
                 st.markdown(f"**🤖 답변:** {st.session_state.messages[i]['content']}")
 
-            with st.expander("📂 PDF 문서 미리보기", expanded=False):
+            with st.expander("📂 PDF 미리보기", expanded=False):
                 for pdf in st.session_state.all_pdfs:
                     file_id = pdf["id"]
                     file_name = pdf["name"]
