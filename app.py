@@ -16,10 +16,9 @@ from langchain.memory import ConversationBufferMemory
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
-# 🔐 API 키 설정
+# 🔐 API 설정
 os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
 
-# 🧠 임베딩 모델
 @st.cache_resource
 def get_embeddings():
     return GoogleGenerativeAIEmbeddings(
@@ -27,7 +26,6 @@ def get_embeddings():
         google_api_key=st.secrets["GOOGLE_API_KEY"]
     )
 
-# 📂 Google Drive API 초기화
 @st.cache_resource
 def init_drive_service():
     try:
@@ -40,7 +38,6 @@ def init_drive_service():
         st.error(f"Drive 서비스 초기화 오류: {str(e)}")
         return None
 
-# 📁 폴더 내 PDF 목록 가져오기
 def get_pdf_files(service, folder_id):
     try:
         results = service.files().list(
@@ -52,7 +49,6 @@ def get_pdf_files(service, folder_id):
         st.error(f"Google Drive API 오류: {str(e)}")
         return []
 
-# 📄 PDF 분석 + 페이지 정보 추가
 def process_pdf(pdf, service):
     try:
         request = service.files().get_media(fileId=pdf['id'])
@@ -74,7 +70,6 @@ def process_pdf(pdf, service):
         st.warning(f"⚠️ {pdf['name']} 처리 중 오류 발생: {str(e)}")
         return []
 
-# 🧠 벡터 저장소 생성
 def create_vector_store(texts, embeddings):
     try:
         return FAISS.from_documents(texts, embeddings)
@@ -85,7 +80,7 @@ def create_vector_store(texts, embeddings):
 def main():
     st.set_page_config(page_title="보유 기술 챗봇", layout="wide")
     st.title("💡 우리 회사 보유 기술 안내 챗봇")
-    st.write("관심 있는 기술을 입력하면 관련된 보유 기술을 알려드립니다.")
+    st.write("궁금한 기술 분야를 입력하면 관련된 보유 기술 자료를 안내합니다.")
 
     try:
         service = init_drive_service()
@@ -169,8 +164,9 @@ def main():
                     output_key="answer"
                 )
 
+            # ✅ 모델 오류 해결: chat-bison-001 사용
             llm = ChatGoogleGenerativeAI(
-                model="models/gemini-pro",  # ✅ 최신 안정 버전
+                model="models/chat-bison-001",
                 temperature=0.7,
                 max_output_tokens=2048,
             )
@@ -186,7 +182,6 @@ def main():
             if "messages" not in st.session_state:
                 st.session_state.messages = []
 
-            # 사용자 입력 처리
             if prompt := st.chat_input("관심 있는 기술 키워드 또는 분야를 입력하세요"):
                 st.session_state.messages.append({"role": "user", "content": prompt})
 
@@ -213,7 +208,6 @@ def main():
                         "content": answer
                     })
 
-            # 채팅 UI 출력
             for i in range(len(st.session_state.messages) - 1, -1, -2):
                 if i > 0 and st.session_state.messages[i - 1]["role"] == "user":
                     st.markdown(f"**🙋 질문:** {st.session_state.messages[i - 1]['content']}")
