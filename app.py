@@ -16,7 +16,6 @@ from langchain.memory import ConversationBufferMemory
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
-# 🔑 API 키 설정
 os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
 
 @st.cache_resource
@@ -60,8 +59,9 @@ def process_pdf(pdf, service):
         loader = PyPDFLoader(pdf_path)
         documents = loader.load()
 
-        for doc in documents:
+        for i, doc in enumerate(documents):
             doc.metadata["source"] = pdf["name"]
+            doc.metadata["page"] = doc.metadata.get("page", i)
 
         os.unlink(pdf_path)
         return documents
@@ -134,10 +134,8 @@ def main():
             with status_container:
                 st.success("✅ 기술 자료 분석 완료! 궁금한 기술을 질문해보세요.")
 
-            # 🔍 검색에서 최소 5개 이상 결과 확보
             retriever = st.session_state.vector_store.as_retriever(search_kwargs={"k": 10})
 
-            # 🧠 프롬프트 재설계
             system_template = """
             너는 우리 회사의 기술 소개 자료를 기반으로 질문자가 어떤 기술 분야에 관심이 있는지를 파악한 후,
             그와 관련된 **우리 회사가 보유한 기술**을 최소 5건 이상 제시해야 합니다.
@@ -186,7 +184,6 @@ def main():
             if "messages" not in st.session_state:
                 st.session_state.messages = []
 
-            # 📝 사용자 입력 처리
             if prompt := st.chat_input("관련 기술이 궁금한 분야를 입력하세요"):
                 st.session_state.messages.append({"role": "user", "content": prompt})
                 with st.spinner("🤖 관련 기술을 찾고 있습니다..."):
@@ -199,10 +196,12 @@ def main():
                     for doc in source_docs:
                         filename = doc.metadata.get("source", "알 수 없는 문서")
                         page = doc.metadata.get("page", "알 수 없는 페이지")
-                        sources.add(f"- `{filename}`, 페이지 {page}")
+                        if isinstance(page, int):
+                            page += 1  # 사람 기준으로 1부터 시작
+                        sources.add(f"- 📄 `{filename}`, **페이지 {page}**")
 
                     if sources:
-                        answer += "\n\n---\n📄 **참고 문서:**\n" + "\n".join(sources)
+                        answer += "\n\n---\n📑 **참고 문서 위치:**\n" + "\n".join(sources)
 
                     if len(source_docs) < 5:
                         st.warning("📌 관련성이 낮은 기술도 포함하여 최소 5건 제시합니다.")
@@ -212,13 +211,11 @@ def main():
                         "content": answer
                     })
 
-            # 💬 채팅 메시지 출력
             for i in range(len(st.session_state.messages) - 1, -1, -2):
                 if i > 0 and st.session_state.messages[i - 1]["role"] == "user":
                     st.markdown(f"**🙋 질문:** {st.session_state.messages[i - 1]['content']}")
                 st.markdown(f"**🤖 답변:** {st.session_state.messages[i]['content']}")
 
-            # 📚 PDF 미리보기
             with st.expander("📂 PDF 문서 미리보기", expanded=False):
                 for pdf in st.session_state.all_pdfs:
                     file_id = pdf["id"]
